@@ -1,29 +1,15 @@
-// LocalStorage Mock Backend for GitHub Pages Compatibility
-const mockDB = {
-    get(key) {
-        return JSON.parse(localStorage.getItem(key)) || null;
-    },
-    set(key, value) {
-        localStorage.setItem(key, JSON.stringify(value));
-    },
-    init() {
-        if (!this.get('users')) this.set('users', []);
-        if (!this.get('kycRequests')) this.set('kycRequests', []);
-        if (!this.get('transactions')) this.set('transactions', []);
-        if (!this.get('beneficiaries')) this.set('beneficiaries', []);
-    }
-};
-mockDB.init();
+// Initialize Supabase (User needs to replace these with their own project details)
+const SUPABASE_URL = 'YOUR_SUPABASE_URL_HERE';
+const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY_HERE';
 
-const API_URL = 'http://localhost:5000/api';
-// Set to true to force Mock API mode (perfect for GitHub Pages)
-const USE_MOCK_API = true; 
+// Create Supabase Client
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const app = {
     state: {
         user: null,
         isLogin: true,
-        currentView: 'auth', // auth, user, admin
+        currentView: 'auth',
     },
 
     init() {
@@ -116,27 +102,44 @@ const app = {
 
     async handleAuth(e) {
         e.preventDefault();
-        const endpoint = this.state.isLogin ? '/auth/login' : '/auth/signup';
-        const payload = {
-            email: this.dom.authEmail.value,
-            password: this.dom.authPassword.value
-        };
-        if (!this.state.isLogin) {
-            payload.name = this.dom.authName.value;
-        }
+        const identifier = this.dom.authEmail.value;
+        const password = this.dom.authPassword.value;
 
         try {
-            const data = await this.mockApiCall(endpoint, payload);
-            if (data.user) {
-                this.state.user = data.user;
-                this.switchView('user');
-                alert(data.message);
+            if (this.state.isLogin) {
+                // Login Flow
+                const { data: users, error } = await supabase
+                    .from('users')
+                    .select('*')
+                    .eq('email', identifier)
+                    .eq('password', password);
+
+                if (error) throw error;
+                if (users.length > 0) {
+                    this.state.user = users[0];
+                    this.switchView('user');
+                    alert('Login successful');
+                } else {
+                    alert('Invalid credentials');
+                }
             } else {
-                alert(data.message);
+                // Signup Flow
+                const name = this.dom.authName.value;
+                const { data, error } = await supabase
+                    .from('users')
+                    .insert([
+                        { name: name, email: identifier, password: password, kyc_status: 'pending', role: 'user', balance: 100000 }
+                    ])
+                    .select();
+
+                if (error) throw error;
+                this.state.user = data[0];
+                this.switchView('user');
+                alert('User created successfully');
             }
         } catch (err) {
             console.error(err);
-            alert('Invalid credentials or error');
+            alert('An error occurred: ' + err.message);
         }
     },
 
@@ -148,22 +151,33 @@ const app = {
     async loadUserData() {
         if (!this.state.user) return;
         
-        // Refresh user from DB
-        const users = mockDB.get('users');
-        this.state.user = users.find(u => u.id === this.state.user.id);
-
-        this.dom.userNameDisplay.textContent = this.state.user.name;
-        this.dom.userBalanceDisplay.textContent = `₹${this.state.user.balance.toLocaleString()}`;
-        this.dom.kycStatusBadge.textContent = `KYC ${this.state.user.kycStatus}`;
-        
-        if (this.state.user.kycStatus === 'approved') {
-            this.dom.kycStatusBadge.style.backgroundColor = 'rgba(16, 185, 129, 0.2)';
-            this.dom.kycStatusBadge.style.color = '#10b981';
-        }
-
         try {
-            const data = await this.mockApiCall('/user/transactions', { userId: this.state.user.id });
-            this.renderTransactions(data.transactions);
+            // Refresh user balance & status from Supabase
+            const { data: userData } = await supabase
+                .from('users')
+                .select('*')
+                .eq('id', this.state.user.id)
+                .single();
+            
+            if (userData) this.state.user = userData;
+
+            this.dom.userNameDisplay.textContent = this.state.user.name;
+            this.dom.userBalanceDisplay.textContent = `₹${this.state.user.balance.toLocaleString()}`;
+            this.dom.kycStatusBadge.textContent = `KYC ${this.state.user.kyc_status}`;
+            
+            if (this.state.user.kyc_status === 'approved') {
+                this.dom.kycStatusBadge.style.backgroundColor = 'rgba(16, 185, 129, 0.2)';
+                this.dom.kycStatusBadge.style.color = '#10b981';
+            }
+
+            // Fetch Transactions
+            const { data: txns } = await supabase
+                .from('transactions')
+                .select('*')
+                .eq('user_id', this.state.user.id)
+                .order('created_at', { ascending: false });
+
+            if (txns) this.renderTransactions(txns);
         } catch (err) {
             console.error(err);
         }
@@ -172,7 +186,7 @@ const app = {
     renderTransactions(txns) {
         this.dom.transactionsTableBody.innerHTML = txns.map(t => `
             <tr>
-                <td>${new Date(t.date).toLocaleDateString()}</td>
+                <td>${new Date(t.created_at).toLocaleDateString()}</td>
                 <td>${t.type}</td>
                 <td>₹${t.amount.toLocaleString()}</td>
                 <td style="color: var(--success)">${t.status}</td>
@@ -190,172 +204,122 @@ const app = {
 
     async handleKyc(e) {
         e.preventDefault();
-        const payload = {
-            userId: this.state.user.id,
-            panNumber: document.getElementById('kyc-pan').value,
-            documentProof: 'dummy_doc.pdf'
-        };
-        await this.mockApiCall('/user/kyc', payload);
-        this.hideModal('kyc-modal');
-        this.state.user.kycStatus = 'pending';
-        this.loadUserData();
-        alert('KYC Request Submitted');
+        const panNumber = document.getElementById('kyc-pan').value;
+        
+        const { error } = await supabase
+            .from('kyc_requests')
+            .insert([{ user_id: this.state.user.id, pan_number: panNumber, status: 'pending' }]);
+
+        if (!error) {
+            this.hideModal('kyc-modal');
+            alert('KYC Request Submitted');
+            this.loadUserData();
+        }
     },
 
     async handleBeneficiary(e) {
         e.preventDefault();
         const payload = {
-            userId: this.state.user.id,
+            user_id: this.state.user.id,
             name: document.getElementById('ben-name').value,
-            accountNumber: document.getElementById('ben-acc').value,
+            account_number: document.getElementById('ben-acc').value,
             ifsc: document.getElementById('ben-ifsc').value
         };
-        await this.mockApiCall('/user/beneficiary', payload);
-        this.hideModal('beneficiary-modal');
-        alert('Beneficiary Added');
+
+        const { error } = await supabase.from('beneficiaries').insert([payload]);
+        if (!error) {
+            this.hideModal('beneficiary-modal');
+            alert('Beneficiary Added');
+        }
     },
 
     async handlePayment(e) {
         e.preventDefault();
-        const payload = {
-            userId: this.state.user.id,
-            amount: Number(document.getElementById('pay-amount').value),
-            cardNumber: document.getElementById('pay-card').value
-        };
-        const res = await this.mockApiCall('/user/card-payment', payload);
-        if (res.transaction) {
-            this.loadUserData();
-            alert('Payment Successful');
-        } else {
-            alert(res.message);
+        const amount = Number(document.getElementById('pay-amount').value);
+        
+        if (this.state.user.balance < amount) {
+            alert('Insufficient balance');
+            return;
         }
-        this.hideModal('payment-modal');
+
+        const newBalance = this.state.user.balance - amount;
+
+        // Update balance
+        const { error: updateError } = await supabase
+            .from('users')
+            .update({ balance: newBalance })
+            .eq('id', this.state.user.id);
+
+        if (!updateError) {
+            // Record Transaction
+            await supabase.from('transactions').insert([{
+                user_id: this.state.user.id,
+                type: 'Card Payment',
+                amount: amount,
+                status: 'Completed'
+            }]);
+
+            this.hideModal('payment-modal');
+            alert('Payment Successful');
+            this.loadUserData();
+        }
     },
 
     async handleUpload(e) {
         e.preventDefault();
-        await this.mockApiCall('/user/upload-proof', {});
         this.hideModal('upload-modal');
-        alert('Document Uploaded');
+        alert('Document Uploaded (Supabase Storage integration required)');
     },
 
+    // Admin Functions
     async loadAdminData() {
         try {
-            const kycData = await this.mockApiCall('/admin/kyc-requests');
-            const fraudData = await this.mockApiCall('/admin/suspicious-activity');
+            const { data: kycData } = await supabase.from('kyc_requests').select('*');
+            const { data: fraudData } = await supabase.from('transactions').select('*').gt('amount', 50000);
 
-            const pendingKyc = kycData.kycRequests.filter(r => r.status === 'pending');
+            const pendingKyc = kycData ? kycData.filter(r => r.status === 'pending') : [];
             this.dom.statPendingKyc.textContent = pendingKyc.length;
-            this.dom.statSuspicious.textContent = fraudData.suspiciousTransactions.length;
+            this.dom.statSuspicious.textContent = fraudData ? fraudData.length : 0;
 
-            this.dom.kycTableBody.innerHTML = kycData.kycRequests.map(r => `
-                <tr>
-                    <td>${r.userId}</td>
-                    <td>${r.panNumber}</td>
-                    <td>${r.status}</td>
-                    <td>
-                        ${r.status === 'pending' ? `
-                            <button onclick="app.approveKyc(${r.id}, 'approved')" style="background:var(--success); color:white; border:none; padding:4px 8px; border-radius:4px; cursor:pointer;">Approve</button>
-                            <button onclick="app.approveKyc(${r.id}, 'rejected')" style="background:var(--danger); color:white; border:none; padding:4px 8px; border-radius:4px; cursor:pointer;">Reject</button>
-                        ` : '-'}
-                    </td>
-                </tr>
-            `).join('');
+            if (kycData) {
+                this.dom.kycTableBody.innerHTML = kycData.map(r => `
+                    <tr>
+                        <td>${r.user_id}</td>
+                        <td>${r.pan_number}</td>
+                        <td>${r.status}</td>
+                        <td>
+                            ${r.status === 'pending' ? `
+                                <button onclick="app.approveKyc(${r.id}, ${r.user_id}, 'approved')" style="background:var(--success); color:white; border:none; padding:4px 8px; border-radius:4px; cursor:pointer;">Approve</button>
+                                <button onclick="app.approveKyc(${r.id}, ${r.user_id}, 'rejected')" style="background:var(--danger); color:white; border:none; padding:4px 8px; border-radius:4px; cursor:pointer;">Reject</button>
+                            ` : '-'}
+                        </td>
+                    </tr>
+                `).join('');
+            }
 
-            this.dom.fraudTableBody.innerHTML = fraudData.suspiciousTransactions.map(t => `
-                <tr>
-                    <td>#${t.id}</td>
-                    <td>${t.userId}</td>
-                    <td style="color: var(--danger)">₹${t.amount.toLocaleString()}</td>
-                    <td>${new Date(t.date).toLocaleDateString()}</td>
-                </tr>
-            `).join('');
-
+            if (fraudData) {
+                this.dom.fraudTableBody.innerHTML = fraudData.map(t => `
+                    <tr>
+                        <td>#${t.id}</td>
+                        <td>${t.user_id}</td>
+                        <td style="color: var(--danger)">₹${t.amount.toLocaleString()}</td>
+                        <td>${new Date(t.created_at).toLocaleDateString()}</td>
+                    </tr>
+                `).join('');
+            }
         } catch (err) {
             console.error(err);
         }
     },
 
-    async approveKyc(id, status) {
-        await this.mockApiCall('/admin/kyc-approve', { requestId: id, status });
+    async approveKyc(reqId, userId, status) {
+        // Update Request
+        await supabase.from('kyc_requests').update({ status: status }).eq('id', reqId);
+        // Update User
+        await supabase.from('users').update({ kyc_status: status }).eq('id', userId);
+        
+        alert(`KYC ${status}`);
         this.loadAdminData();
-    },
-
-    // Mock API System for GitHub Pages
-    async mockApiCall(endpoint, data = {}) {
-        return new Promise((resolve, reject) => {
-            setTimeout(() => {
-                let users = mockDB.get('users');
-                let kycReqs = mockDB.get('kycRequests');
-                let txns = mockDB.get('transactions');
-                let bens = mockDB.get('beneficiaries');
-
-                if (endpoint === '/auth/signup') {
-                    const user = { id: Date.now(), ...data, kycStatus: 'pending', role: 'user', balance: 100000 };
-                    users.push(user);
-                    mockDB.set('users', users);
-                    resolve({ message: 'User created', user });
-                }
-                else if (endpoint === '/auth/login') {
-                    const user = users.find(u => u.email === data.email && u.password === data.password);
-                    if (user) resolve({ message: 'Login successful', user });
-                    else reject({ message: 'Invalid credentials' });
-                }
-                else if (endpoint === '/user/kyc') {
-                    const req = { id: Date.now(), ...data, status: 'pending' };
-                    kycReqs.push(req);
-                    mockDB.set('kycRequests', kycReqs);
-                    resolve({ message: 'KYC submitted', request: req });
-                }
-                else if (endpoint === '/user/beneficiary') {
-                    const b = { id: Date.now(), ...data };
-                    bens.push(b);
-                    mockDB.set('beneficiaries', bens);
-                    resolve({ message: 'Beneficiary added', beneficiary: b });
-                }
-                else if (endpoint === '/user/card-payment') {
-                    const userIndex = users.findIndex(u => u.id === data.userId);
-                    if (userIndex > -1 && users[userIndex].balance >= data.amount) {
-                        users[userIndex].balance -= data.amount;
-                        mockDB.set('users', users);
-                        const tx = { id: Date.now(), userId: data.userId, type: 'Card Payment', amount: data.amount, status: 'Completed', date: new Date() };
-                        txns.push(tx);
-                        mockDB.set('transactions', txns);
-                        resolve({ message: 'Payment successful', transaction: tx });
-                    } else {
-                        resolve({ message: 'Insufficient balance' });
-                    }
-                }
-                else if (endpoint === '/user/upload-proof') {
-                    resolve({ message: 'Document uploaded' });
-                }
-                else if (endpoint === '/user/transactions') {
-                    const userTx = txns.filter(t => t.userId === data.userId);
-                    resolve({ transactions: userTx });
-                }
-                else if (endpoint === '/admin/kyc-requests') {
-                    resolve({ kycRequests: kycReqs });
-                }
-                else if (endpoint === '/admin/suspicious-activity') {
-                    const suspicious = txns.filter(t => t.amount > 50000);
-                    resolve({ suspiciousTransactions: suspicious });
-                }
-                else if (endpoint === '/admin/kyc-approve') {
-                    const reqIndex = kycReqs.findIndex(r => r.id === data.requestId);
-                    if (reqIndex > -1) {
-                        kycReqs[reqIndex].status = data.status;
-                        mockDB.set('kycRequests', kycReqs);
-                        
-                        const uIndex = users.findIndex(u => u.id === kycReqs[reqIndex].userId);
-                        if (uIndex > -1) {
-                            users[uIndex].kycStatus = data.status;
-                            mockDB.set('users', users);
-                        }
-                        resolve({ message: `KYC ${data.status}` });
-                    }
-                }
-            }, 300); // Simulate network delay
-        });
     }
 };
 
