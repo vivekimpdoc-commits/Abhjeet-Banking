@@ -1,4 +1,23 @@
+// LocalStorage Mock Backend for GitHub Pages Compatibility
+const mockDB = {
+    get(key) {
+        return JSON.parse(localStorage.getItem(key)) || null;
+    },
+    set(key, value) {
+        localStorage.setItem(key, JSON.stringify(value));
+    },
+    init() {
+        if (!this.get('users')) this.set('users', []);
+        if (!this.get('kycRequests')) this.set('kycRequests', []);
+        if (!this.get('transactions')) this.set('transactions', []);
+        if (!this.get('beneficiaries')) this.set('beneficiaries', []);
+    }
+};
+mockDB.init();
+
 const API_URL = 'http://localhost:5000/api';
+// Set to true to force Mock API mode (perfect for GitHub Pages)
+const USE_MOCK_API = true; 
 
 const app = {
     state: {
@@ -107,14 +126,8 @@ const app = {
         }
 
         try {
-            const res = await fetch(API_URL + endpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            const data = await res.json();
-            
-            if (res.ok) {
+            const data = await this.mockApiCall(endpoint, payload);
+            if (data.user) {
                 this.state.user = data.user;
                 this.switchView('user');
                 alert(data.message);
@@ -123,7 +136,7 @@ const app = {
             }
         } catch (err) {
             console.error(err);
-            alert('An error occurred');
+            alert('Invalid credentials or error');
         }
     },
 
@@ -132,9 +145,13 @@ const app = {
         this.switchView('auth');
     },
 
-    // User Functions
     async loadUserData() {
         if (!this.state.user) return;
+        
+        // Refresh user from DB
+        const users = mockDB.get('users');
+        this.state.user = users.find(u => u.id === this.state.user.id);
+
         this.dom.userNameDisplay.textContent = this.state.user.name;
         this.dom.userBalanceDisplay.textContent = `₹${this.state.user.balance.toLocaleString()}`;
         this.dom.kycStatusBadge.textContent = `KYC ${this.state.user.kycStatus}`;
@@ -145,8 +162,7 @@ const app = {
         }
 
         try {
-            const res = await fetch(`${API_URL}/user/transactions/${this.state.user.id}`);
-            const data = await res.json();
+            const data = await this.mockApiCall('/user/transactions', { userId: this.state.user.id });
             this.renderTransactions(data.transactions);
         } catch (err) {
             console.error(err);
@@ -179,10 +195,11 @@ const app = {
             panNumber: document.getElementById('kyc-pan').value,
             documentProof: 'dummy_doc.pdf'
         };
-        await this.postData('/user/kyc', payload);
+        await this.mockApiCall('/user/kyc', payload);
         this.hideModal('kyc-modal');
         this.state.user.kycStatus = 'pending';
         this.loadUserData();
+        alert('KYC Request Submitted');
     },
 
     async handleBeneficiary(e) {
@@ -193,8 +210,9 @@ const app = {
             accountNumber: document.getElementById('ben-acc').value,
             ifsc: document.getElementById('ben-ifsc').value
         };
-        await this.postData('/user/beneficiary', payload);
+        await this.mockApiCall('/user/beneficiary', payload);
         this.hideModal('beneficiary-modal');
+        alert('Beneficiary Added');
     },
 
     async handlePayment(e) {
@@ -204,29 +222,27 @@ const app = {
             amount: Number(document.getElementById('pay-amount').value),
             cardNumber: document.getElementById('pay-card').value
         };
-        const res = await this.postData('/user/card-payment', payload);
-        if (res && res.transaction) {
-            this.state.user.balance -= payload.amount;
+        const res = await this.mockApiCall('/user/card-payment', payload);
+        if (res.transaction) {
             this.loadUserData();
+            alert('Payment Successful');
+        } else {
+            alert(res.message);
         }
         this.hideModal('payment-modal');
     },
 
     async handleUpload(e) {
         e.preventDefault();
-        await this.postData('/user/upload-proof', {});
+        await this.mockApiCall('/user/upload-proof', {});
         this.hideModal('upload-modal');
+        alert('Document Uploaded');
     },
 
-    // Admin Functions
     async loadAdminData() {
         try {
-            const [kycRes, fraudRes] = await Promise.all([
-                fetch(`${API_URL}/admin/kyc-requests`),
-                fetch(`${API_URL}/admin/suspicious-activity`)
-            ]);
-            const kycData = await kycRes.json();
-            const fraudData = await fraudRes.json();
+            const kycData = await this.mockApiCall('/admin/kyc-requests');
+            const fraudData = await this.mockApiCall('/admin/suspicious-activity');
 
             const pendingKyc = kycData.kycRequests.filter(r => r.status === 'pending');
             this.dom.statPendingKyc.textContent = pendingKyc.length;
@@ -261,24 +277,85 @@ const app = {
     },
 
     async approveKyc(id, status) {
-        await this.postData('/admin/kyc-approve', { requestId: id, status });
+        await this.mockApiCall('/admin/kyc-approve', { requestId: id, status });
         this.loadAdminData();
     },
 
-    async postData(endpoint, data) {
-        try {
-            const res = await fetch(API_URL + endpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
-            const result = await res.json();
-            alert(result.message);
-            return result;
-        } catch (err) {
-            console.error(err);
-            alert('Action failed');
-        }
+    // Mock API System for GitHub Pages
+    async mockApiCall(endpoint, data = {}) {
+        return new Promise((resolve, reject) => {
+            setTimeout(() => {
+                let users = mockDB.get('users');
+                let kycReqs = mockDB.get('kycRequests');
+                let txns = mockDB.get('transactions');
+                let bens = mockDB.get('beneficiaries');
+
+                if (endpoint === '/auth/signup') {
+                    const user = { id: Date.now(), ...data, kycStatus: 'pending', role: 'user', balance: 100000 };
+                    users.push(user);
+                    mockDB.set('users', users);
+                    resolve({ message: 'User created', user });
+                }
+                else if (endpoint === '/auth/login') {
+                    const user = users.find(u => u.email === data.email && u.password === data.password);
+                    if (user) resolve({ message: 'Login successful', user });
+                    else reject({ message: 'Invalid credentials' });
+                }
+                else if (endpoint === '/user/kyc') {
+                    const req = { id: Date.now(), ...data, status: 'pending' };
+                    kycReqs.push(req);
+                    mockDB.set('kycRequests', kycReqs);
+                    resolve({ message: 'KYC submitted', request: req });
+                }
+                else if (endpoint === '/user/beneficiary') {
+                    const b = { id: Date.now(), ...data };
+                    bens.push(b);
+                    mockDB.set('beneficiaries', bens);
+                    resolve({ message: 'Beneficiary added', beneficiary: b });
+                }
+                else if (endpoint === '/user/card-payment') {
+                    const userIndex = users.findIndex(u => u.id === data.userId);
+                    if (userIndex > -1 && users[userIndex].balance >= data.amount) {
+                        users[userIndex].balance -= data.amount;
+                        mockDB.set('users', users);
+                        const tx = { id: Date.now(), userId: data.userId, type: 'Card Payment', amount: data.amount, status: 'Completed', date: new Date() };
+                        txns.push(tx);
+                        mockDB.set('transactions', txns);
+                        resolve({ message: 'Payment successful', transaction: tx });
+                    } else {
+                        resolve({ message: 'Insufficient balance' });
+                    }
+                }
+                else if (endpoint === '/user/upload-proof') {
+                    resolve({ message: 'Document uploaded' });
+                }
+                else if (endpoint === '/user/transactions') {
+                    const userTx = txns.filter(t => t.userId === data.userId);
+                    resolve({ transactions: userTx });
+                }
+                else if (endpoint === '/admin/kyc-requests') {
+                    resolve({ kycRequests: kycReqs });
+                }
+                else if (endpoint === '/admin/suspicious-activity') {
+                    const suspicious = txns.filter(t => t.amount > 50000);
+                    resolve({ suspiciousTransactions: suspicious });
+                }
+                else if (endpoint === '/admin/kyc-approve') {
+                    const reqIndex = kycReqs.findIndex(r => r.id === data.requestId);
+                    if (reqIndex > -1) {
+                        kycReqs[reqIndex].status = data.status;
+                        mockDB.set('kycRequests', kycReqs);
+                        
+                        const uIndex = users.findIndex(u => u.id === kycReqs[reqIndex].userId);
+                        if (uIndex > -1) {
+                            users[uIndex].kycStatus = data.status;
+                            mockDB.set('users', users);
+                        }
+                        resolve({ message: `KYC ${data.status}` });
+                    }
+                }
+            }, 300); // Simulate network delay
+        });
     }
 };
 
