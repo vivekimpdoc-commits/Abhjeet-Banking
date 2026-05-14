@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeoBank - Premium Banking Experience</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Navigation -->
+        <nav class="navbar">
+            <div class="logo">NeoBank</div>
+            <div class="nav-links">
+                <button id="nav-user-btn" class="nav-btn active">User Portal</button>
+                <button id="nav-admin-btn" class="nav-btn">Admin Dashboard</button>
+                <button id="logout-btn" class="nav-btn hidden">Logout</button>
+            </div>
+        </nav>
+
+        <!-- Main Content Area -->
+        <main id="main-content">
+            
+            <!-- Auth Section -->
+            <section id="auth-section" class="view-section active">
+                <div class="auth-container">
+                    <div class="auth-card">
+                        <h2 id="auth-title">Welcome Back</h2>
+                        <form id="auth-form">
+                            <input type="text" id="auth-name" placeholder="Full Name" class="hidden input-field">
+                            <input type="email" id="auth-email" placeholder="Email Address" required class="input-field">
+                            <input type="password" id="auth-password" placeholder="Password" required class="input-field">
+                            <button type="submit" class="primary-btn w-100">Login</button>
+                        </form>
+                        <p class="auth-switch">Don't have an account? <span id="switch-to-signup">Sign Up</span></p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- User Dashboard -->
+            <section id="user-dashboard" class="view-section hidden">
+                <div class="dashboard-header">
+                    <h2>Welcome, <span id="user-name-display">User</span></h2>
+                    <div class="balance-card">
+                        <p>Available Balance</p>
+                        <h3 id="user-balance-display">₹0</h3>
+                        <span class="kyc-badge" id="kyc-status-badge">KYC Pending</span>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid">
+                    <!-- Actions -->
+                    <div class="card">
+                        <h3>Quick Actions</h3>
+                        <div class="action-grid">
+                            <button class="action-btn" onclick="app.showModal('kyc-modal')">Complete KYC</button>
+                            <button class="action-btn" onclick="app.showModal('beneficiary-modal')">Add Beneficiary</button>
+                            <button class="action-btn" onclick="app.showModal('payment-modal')">Card Payment</button>
+                            <button class="action-btn" onclick="app.showModal('upload-modal')">Upload Proofs</button>
+                        </div>
+                    </div>
+
+                    <!-- Transactions -->
+                    <div class="card">
+                        <h3>Transaction History</h3>
+                        <div class="table-container">
+                            <table id="transactions-table">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Type</th>
+                                        <th>Amount</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Populated by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Admin Dashboard -->
+            <section id="admin-dashboard" class="view-section hidden">
+                <div class="dashboard-header">
+                    <h2>Admin Command Center</h2>
+                    <div class="admin-stats">
+                        <div class="stat-card">
+                            <p>Pending KYC</p>
+                            <h3 id="stat-pending-kyc">0</h3>
+                        </div>
+                        <div class="stat-card">
+                            <p>Suspicious Txns</p>
+                            <h3 id="stat-suspicious">0</h3>
+                        </div>
+                        <div class="stat-card">
+                            <p>Global Txn Limit</p>
+                            <h3 id="stat-limit">₹100,000</h3>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid">
+                    <div class="card">
+                        <h3>KYC Approval Requests</h3>
+                        <div class="table-container">
+                            <table id="kyc-table">
+                                <thead>
+                                    <tr>
+                                        <th>User ID</th>
+                                        <th>PAN Number</th>
+                                        <th>Status</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Populated by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h3>Fraud Monitoring Alerts</h3>
+                        <div class="table-container">
+                            <table id="fraud-table">
+                                <thead>
+                                    <tr>
+                                        <th>Txn ID</th>
+                                        <th>User ID</th>
+                                        <th>Amount</th>
+                                        <th>Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Populated by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div id="kyc-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-btn" onclick="app.hideModal('kyc-modal')">&times;</span>
+            <h2>Submit KYC</h2>
+            <form id="kyc-form">
+                <input type="text" id="kyc-pan" placeholder="PAN Number" required class="input-field">
+                <input type="file" id="kyc-doc" class="input-field">
+                <button type="submit" class="primary-btn w-100">Submit</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="beneficiary-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-btn" onclick="app.hideModal('beneficiary-modal')">&times;</span>
+            <h2>Add Beneficiary</h2>
+            <form id="beneficiary-form">
+                <input type="text" id="ben-name" placeholder="Beneficiary Name" required class="input-field">
+                <input type="text" id="ben-acc" placeholder="Account Number" required class="input-field">
+                <input type="text" id="ben-ifsc" placeholder="IFSC Code" required class="input-field">
+                <button type="submit" class="primary-btn w-100">Add</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="payment-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-btn" onclick="app.hideModal('payment-modal')">&times;</span>
+            <h2>Card Payment</h2>
+            <form id="payment-form">
+                <input type="number" id="pay-amount" placeholder="Amount (₹)" required class="input-field">
+                <input type="text" id="pay-card" placeholder="Card Number" required class="input-field">
+                <button type="submit" class="primary-btn w-100">Pay Now</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="upload-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-btn" onclick="app.hideModal('upload-modal')">&times;</span>
+            <h2>Upload Invoice/Rent Proof</h2>
+            <form id="upload-form">
+                <input type="file" required class="input-field">
+                <button type="submit" class="primary-btn w-100">Upload</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
