@@ -4,8 +4,63 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NeoBank - Premium Banking Experience</title>
+    <meta name="description" content="NeoBank — A secure, premium Neobank platform with user dashboard, KYC, payments and admin command center.">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
+    <style>
+        /* Demo Banner */
+        #demo-banner {
+            background: linear-gradient(90deg, #1d4ed8, #7c3aed);
+            color: #fff;
+            text-align: center;
+            padding: 0.55rem 1rem;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+        #demo-banner code {
+            background: rgba(255,255,255,0.15);
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        #demo-banner button {
+            background: transparent;
+            border: none;
+            color: rgba(255,255,255,0.7);
+            font-size: 1rem;
+            cursor: pointer;
+            padding: 0 0.3rem;
+        }
+        /* Toast Notifications */
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: #1e293b;
+            color: #f8fafc;
+            padding: 0.85rem 1.4rem;
+            border-radius: 10px;
+            border-left: 4px solid #10b981;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+            z-index: 9999;
+            font-size: 0.9rem;
+            max-width: 320px;
+            opacity: 0;
+            transform: translateY(12px);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .toast-error {
+            border-left-color: #ef4444;
+        }
+    </style>
 </head>
 <body>
     <div id="app">
@@ -194,6 +249,7 @@
         </div>
     </div>
 
+    <!-- Supabase CDN — used only when credentials are set in js/app.js -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/app.js"></script>
 </body>
